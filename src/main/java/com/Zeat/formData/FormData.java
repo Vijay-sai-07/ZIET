@@ -1,9 +1,11 @@
 package com.Zeat.formData;
 
 import com.auth.ZohoAuth;
+import food.FoodProcessor;
+import food.MainFoodListener;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -12,24 +14,33 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.SQLException;
+import java.time.LocalTime;
+import java.util.ArrayList;
 
 //User Request to Sign up
 public class FormData implements Runnable {
-
+	MainFoodListener mainFoodListener = new MainFoodListener();
     private static String accessToken = "";
     private static final UserInserter obj = new UserInserter();
     private static Users user;
-    private static boolean snack = false;
+    private static ArrayList<Users> userList;
+    
 
+    
 
     public void run() {
         while (true) {
-            user = new Users();
+        	try {
+                Thread.sleep(10000);
+            } catch (InterruptedException e) {
+            	e.printStackTrace();
+            }
+        	userList = new ArrayList();
             System.out.println("FormData");
             ZohoAuth auth;
             try {
                 auth = new ZohoAuth(new File("client_details.config"), new File("Tokens.protected"));
-                accessToken = auth.getAuthToken();
+                accessToken = auth.getAuthTokenFirst();
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -37,25 +48,47 @@ public class FormData implements Runnable {
                 getDB("formdata");
                 getDB("userdata");
                 try {
-                    if (snack) {
-                        user.setMeals(user.getMeals().toString() + ",Snack");
+                    for (Users user : userList) {
+	                    obj.insertUser(user.getUsername(),user.getChatID(), user.getMail(), user.getHeight(), user.getWeight(), user.getGender(),
+	                            user.getAge(), user.getPhysicalActivityLevel(), user.isEggs(), user.getFitnessGoal(),
+	                            user.getMeals(), user.getDietaryPreferences(), user.getHealthConditions(), user.getAllergies());
+	                    System.out.println("Data inserted successfully!");
                     }
-                    obj.insertUser(user.getUsername(),user.getChatID(), user.getMail(), user.getHeight(), user.getWeight(), user.getGender(),
-                            user.getAge(), user.getPhysicalActivityLevel(), user.isEggs(), user.getFitnessGoal(),
-                            user.getMeals(), user.getDietaryPreferences(), user.getHealthConditions(), user.getAllergies());
-                    System.out.println("Data inserted successfully!");
+                    LocalTime now = LocalTime.now();
+                    FoodProcessor foodProcessor = mainFoodListener.getFoodProcessor();
+                    if (now.isBefore(LocalTime.of(7,30))) {
+                        mainFoodListener.executeScheduledTask(1);
+                    }
+                    if (now.isBefore(LocalTime.of(11,30))) {
+                        foodProcessor.executeBasedOnMealID(2);
+                    }
+                    if (now.isBefore(LocalTime.of(3,30))) {
+                        foodProcessor.executeBasedOnMealID(3);
+                    }
+                    if (now.isBefore(LocalTime.of(6,30))) {
+                        foodProcessor.executeBasedOnMealID(4);
+                    }
+                    if (now.isBefore(LocalTime.of(23,30))) {
+                        mainFoodListener.executeScheduledTask(3);
+                    }
                 } catch (SQLException e) {
-                    e.printStackTrace();
+                    boolean padma = false;
+                    try {
+                        padma = obj.tableMapper.prepareAndReadMap("SELECT * FROM user WHERE EmailId = ?", user.getMail()).isEmpty();
+                    } catch (SQLException ex) {
+                        ex.printStackTrace();
+                    }
+                    if (e.getMessage().contains("Duplicate entry") || padma) {
+                    	
+                        System.err.println("User : "+user.getMail()+" Tried to sign up again");
+                    } else {
+                        e.printStackTrace();
+                    }
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             } catch (NullPointerException e) {
                 System.err.println("No Users");
-            }
-            try {
-                Thread.sleep(10000);
-            } catch (InterruptedException e) {
-            	e.printStackTrace();
             }
         }
     }
@@ -104,14 +137,12 @@ public class FormData implements Runnable {
 
         for (Object x : list) {
             JSONObject record = (JSONObject) x;
-
+            user = new Users();
             user.setChatID(record.getString("id"));
             if (record.getString("allergies").equals("")) {
                 user.setAllergies("NONE");
-
             } else {
                 user.setAllergies(record.getString("allergies"));
-
             }
             user.setEggs(record.getBoolean("eggs"));
             user.setWeight(record.getDouble("weight"));
@@ -126,8 +157,11 @@ public class FormData implements Runnable {
             user.setHealthConditions(record.getString("hs"));
             user.setAllergies(record.getString("allergies"));
             user.setHeight(record.getDouble("height"));
-            snack = (boolean) record.get("snacks");
-
+            boolean snack = (boolean) record.get("snacks");
+            if (snack) {
+                user.setMeals(user.getMeals().toString() + ",Snack");
+            }
+            userList.add(user);
             DeleteDBdata(record.getString("id"), "formdata");
         }
     }
@@ -136,8 +170,9 @@ public class FormData implements Runnable {
         JSONObject obj = new JSONObject(response.toString());
         JSONArray list = obj.getJSONArray("list");
 
-        for (Object x : list) {
-            JSONObject record = (JSONObject) x;
+        for (int i = 0; i < list.length(); i++) {
+        	user = userList.get(i);
+            JSONObject record = (JSONObject) list.getJSONObject(i);
             String gender = record.getString("gender");
             user.setChatID(record.getString("id"));
             user.setUsername(record.getString("username"));
@@ -173,10 +208,4 @@ public class FormData implements Runnable {
         }
     }
 }
-
-
-
-   
-
-
 

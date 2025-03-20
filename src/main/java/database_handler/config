@@ -1,5 +1,5 @@
 url=jdbc:mysql://localhost/
 username=root
-password=root
-database_name=Food
+password=
+database_name=
 class_path=com.mysql.cj.jdbc.Driver
